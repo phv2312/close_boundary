@@ -58,7 +58,7 @@ def to_neighbor_matrix(cv2_im):
         neighbors, _matrix = _count_active_neighbor(row, col, matrix=cv2_im)
         result[row, col] = len(neighbors)
 
-        if True:
+        if False:
             print("row:%d-col:%d has %d neighbors..." % (row, col, len(neighbors)))
 
     return result
@@ -156,7 +156,7 @@ def is_intersection_point(row, col, cv2_im, max_traveled_pixel=10):
         neighbor_coords = [coord for coord in neighbor_coords if coord not in traveled + stack]
 
         n_neighbor = len(neighbor_coords)
-        if True:
+        if False:
             print("row: %d,col: %d has %d neighbor, %d" % (cur_row, cur_col, n_neighbor, tmp_max_traveled_pixel))
 
         if n_neighbor < 1:
@@ -307,6 +307,21 @@ def match_direction(point1, point2, direction_dct, org_shape):
     connect_2 = do_exist_path_btw_points(point2, point1, mat, padding=iter)
 
     is_connect = connect_1 and connect_2
-    if is_connect: return True
+    if is_connect:
+        return True
 
     return False
+
+def convert_output_format(pair_points):
+    """Converts the format output pairs to that of evaluation.
+
+    :param pair_points:
+    :return:
+    """
+    result = dict()
+    for pair in pair_points:
+        start, end = pair
+        key = '%d_%d' % (start[0], start[1])
+        value = '%d_%d' % (end[0], end[1])
+        result[key] = value
+    return result
