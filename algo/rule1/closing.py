@@ -5,7 +5,7 @@ from algo.rule1.utils import *
 
 class ClosingModel:
 
-    def __init__(self, max_traveled_pixel=7, max_pair_distance=30, keypoint_to_boundary_distance=30, DEBUG = True):
+    def __init__(self, max_traveled_pixel=2, max_pair_distance=70, keypoint_to_boundary_distance=50, DEBUG = True):
 
         self.max_traveled_pixel = max_traveled_pixel
         self.max_pair_distance = max_pair_distance
@@ -78,7 +78,12 @@ class ClosingModel:
             2. The line connecting two key-points is not allowed to intersect with other boundary line.
             3. 
         """
-        pair = choose_pair_by_distance(chosen_rows, chosen_cols, max_distance=self.max_pair_distance)
+        try:
+            pair = choose_pair_by_distance(chosen_rows, chosen_cols, max_distance=self.max_pair_distance)
+        except Exception as e:
+            print (e)
+            pair = {}
+
         traveled = []
         for src_id, tgt_id in pair.items():
             src_r, src_c = chosen_rows[src_id], chosen_cols[src_id]
@@ -154,13 +159,6 @@ if __name__ == '__main__':
     from glob import glob
 
     closing_model = ClosingModel()
-    paths = glob('D:/data/geek/close_contours/input/*')
-    ca_path = 'D:/data/geek/close_contours/ca.csv',
-    output = {
-                 'hor01_004_k_A.A0019.png': {},
-                 'hor01_018_021_k_A.A0005.png': {'1356_1862': '1364_1868', '200_10': '10_0'}
-             },
-    report_path = 'report.xlsx'
-    for p in paths:
-        sketch_tgt_im = np.array(Image.open(p).convert('L'))
-        _pair_points = closing_model.process(sketch_tgt_im)
+    sketch_tgt_fn = "/home/kan/Desktop/close_contours/input/hor01_180_k_R2_B_r2.B0004.png"
+    closing_model.process(np.array(Image.open(sketch_tgt_fn).convert('L')))
+
