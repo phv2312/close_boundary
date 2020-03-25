@@ -3,7 +3,7 @@ import cv2
 from revamp.close_boundary.algo.rule1.utils import *
 
 class ClosingModel:
-    def __init__(self, max_traveled_pixel=10, max_pair_distance=10, keypoint_to_boundary_distance=7, DEBUG = True):
+    def __init__(self, max_traveled_pixel=7, max_pair_distance=30, keypoint_to_boundary_distance=30, DEBUG = True):
         self.max_traveled_pixel = max_traveled_pixel
         self.max_pair_distance  = max_pair_distance
         self.keypoint_to_boundary_distance = keypoint_to_boundary_distance
@@ -29,7 +29,8 @@ class ClosingModel:
             out_fn = os.path.join(self.DEBUG_DIR, "_2_key_points_step2.png")
             _debug_im = debug_im.copy()
             for row, col in zip(rows, cols):
-                cv2.circle(_debug_im, (col, row), radius=1, color=(0,255,0), thickness=1)
+                cv2.circle(_debug_im, (col, row), radius=1, color=(0,255,0), thickness=2)
+
 
             cv2.imwrite(out_fn, _debug_im)
 
@@ -60,7 +61,10 @@ class ClosingModel:
             out_fn = os.path.join(self.DEBUG_DIR, "_4_heuristic_intersection_points_step4.png")
             _debug_im = debug_im.copy()
             for row, col in zip(chosen_rows, chosen_cols):
-                cv2.circle(_debug_im, (col, row), radius=4, color=(0, 255, 0), thickness=2)
+                cv2.circle(_debug_im, (col, row), radius=1, color=(0, 255, 0), thickness=2)
+
+                cv2.putText(_debug_im, "%d_%d" % (row, col), (col, row), cv2.FONT_ITALIC, 0.35,
+                            color=(255,0,255), thickness=1)
 
             cv2.imwrite(out_fn, _debug_im)
 
@@ -79,6 +83,9 @@ class ClosingModel:
 
             p1 = (src_r, src_c)
             p2 = (tgt_r, tgt_c)
+
+            if p1 in [(1158, 737)] or p2 in [(1183, 730)]:
+                print('found')
 
             if do_exist_path_btw_points(point1=p1, point2=p2, cv2_im=thinned_im.copy(), padding=2):
                 continue  # ignore
@@ -100,10 +107,10 @@ class ClosingModel:
             _debug_im = debug_im.copy()
 
             for p1, p2 in pair_points:
-                cv2.circle(_debug_im, (p1[1], p1[0]), radius=1, color=(0, 255, 0), thickness=1)
-                cv2.circle(_debug_im, (p2[1], p2[0]), radius=1, color=(0, 255, 0), thickness=1)
+                cv2.circle(_debug_im, (p1[1], p1[0]), radius=5, color=(0, 255, 0), thickness=5)
+                cv2.circle(_debug_im, (p2[1], p2[0]), radius=5, color=(0, 255, 0), thickness=5)
 
-                cv2.line(_debug_im, (p1[1], p1[0]), (p2[1], p1[0]), color=(0, 0, 255), thickness=2)
+                cv2.line(_debug_im, (p1[1], p1[0]), (p2[1], p2[0]), color=(0, 0, 255), thickness=2)
 
             cv2.imwrite(out_fn, _debug_im)
 
@@ -131,7 +138,7 @@ class ClosingModel:
                 cv2.circle(_debug_im, (p1[1], p1[0]), radius=1, color=(0, 255, 0), thickness=2)
                 cv2.circle(_debug_im, (p2[1], p2[0]), radius=1, color=(0, 255, 0), thickness=2)
 
-                cv2.line(_debug_im, (p1[1], p1[0]), (p2[1], p1[0]), color=(0, 0, 255), thickness=2)
+                cv2.line(_debug_im, (p1[1], p1[0]), (p2[1], p2[0]), color=(0, 0, 255), thickness=2)
 
             cv2.imwrite(out_fn, _debug_im)
 
@@ -141,7 +148,9 @@ if __name__ == '__main__':
     closing_model = ClosingModel()
 
     import PIL.Image as Image
-    sketch_tgt_im_fn = "/home/kan/Desktop/Cinnamon/datapile/geektoy/all_data/hor02_015t/sketch/E0003.tga"
+    sketch_tgt_im_fn = "/home/kan/Desktop/Cinnamon/datapile/geektoy/all_data/hor02_031/sketch/A0004.tga"
+    # sketch_tgt_im_fn = "/home/kan/Desktop/close_contours/input/hor01_018_021_k_A.A0005.png"
+    # sketch_tgt_im_fn = "/home/kan/Desktop/close_contours/input/hor01_057_R_C.C0002.png"
     sketch_tgt_im = np.array(Image.open(sketch_tgt_im_fn).convert('L'))
 
     pair_points = closing_model.process(sketch_tgt_im)
