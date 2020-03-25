@@ -1,18 +1,21 @@
 import os
-import cv2
-from revamp.close_boundary.algo.rule1.utils import *
+
+from algo.rule1.utils import *
+
 
 class ClosingModel:
+
     def __init__(self, max_traveled_pixel=7, max_pair_distance=30, keypoint_to_boundary_distance=30, DEBUG = True):
+
         self.max_traveled_pixel = max_traveled_pixel
-        self.max_pair_distance  = max_pair_distance
+        self.max_pair_distance = max_pair_distance
         self.keypoint_to_boundary_distance = keypoint_to_boundary_distance
 
         self.DEBUG = DEBUG
         self.DEBUG_DIR = "debug"
         os.makedirs(self.DEBUG_DIR, exist_ok=True)
 
-    def process(self, tgt_sketch_im, ref_color_im = None):
+    def process(self, tgt_sketch_im, ref_color_im=None):
         pair_points = []
         debug_im = cv2.cvtColor(tgt_sketch_im, cv2.COLOR_GRAY2RGB)
 
@@ -24,6 +27,7 @@ class ClosingModel:
 
         # the key-points is defined as the pixel which has the most number of neighbor background-pixels.
         neighbor_matrix = to_neighbor_matrix(thinned_im)
+        # Get the locations of all the 1's
         rows, cols = np.where(neighbor_matrix == 1)
         if self.DEBUG:
             out_fn = os.path.join(self.DEBUG_DIR, "_2_key_points_step2.png")
@@ -31,19 +35,18 @@ class ClosingModel:
             for row, col in zip(rows, cols):
                 cv2.circle(_debug_im, (col, row), radius=1, color=(0,255,0), thickness=2)
 
-
             cv2.imwrite(out_fn, _debug_im)
 
         # calculate the direction
         theta = calc_gradient(255 - thinned_im)
-        direction_dct = find_direction(thinned_im, rows, cols, theta) # (x_direction, y_direction)
+        direction_dct = find_direction(thinned_im, rows, cols, theta)  # (x_direction, y_direction)
         if self.DEBUG:
             out_fn = os.path.join(self.DEBUG_DIR, "_3_direction_step3.png")
             _debug_im = debug_im.copy()
 
             for row, col in zip(rows, cols):
                 _next_x, _next_y = direction_dct[(row, col)]
-                cv2.arrowedLine(_debug_im, (col, row), (col + _next_x * 6, row + _next_y * 6), color=(0,255,0),
+                cv2.arrowedLine(_debug_im, (col, row), (col + _next_x * 6, row + _next_y * 6), color=(0, 255, 0),
                                 thickness=1, tipLength=0.5)
 
             cv2.imwrite(out_fn, _debug_im)
@@ -95,13 +98,13 @@ class ClosingModel:
                 continue  # ignore
 
             if not match_direction(point1=p1, point2=p2, direction_dct=direction_dct, org_shape=thinned_im.shape):
-                continue # ignore
+                continue  # ignore
 
             traveled += [p1, p2]
             pair_points += [(p1, p2)]
 
-        print("pair_points")
-        print(pair_points)
+        # print("pair_points")
+        # print(pair_points)
         if self.DEBUG:
             out_fn = os.path.join(self.DEBUG_DIR, "_4_heuristic_distance_angle_step4.png")
             _debug_im = debug_im.copy()
@@ -122,8 +125,8 @@ class ClosingModel:
             if (row, col) in traveled: continue
 
             dest_row, dest_col = connect_keypoint_to_boundary(point1=(row, col), cv2_im=thinned_im.copy(),
-                                                                 max_distance=self.keypoint_to_boundary_distance,
-                                                                 direction_dct=direction_dct)
+                                                              max_distance=self.keypoint_to_boundary_distance,
+                                                              direction_dct=direction_dct)
 
             if dest_row != -1:
                 pair_points += [((row, col), (dest_row, dest_col))]
@@ -142,15 +145,22 @@ class ClosingModel:
 
             cv2.imwrite(out_fn, _debug_im)
 
-        return pair_points
+        return pair_points, self.max_traveled_pixel, self.max_pair_distance, self.keypoint_to_boundary_distance
+
 
 if __name__ == '__main__':
-    closing_model = ClosingModel()
-
     import PIL.Image as Image
-    sketch_tgt_im_fn = "/home/kan/Desktop/Cinnamon/datapile/geektoy/all_data/hor02_031/sketch/A0004.tga"
-    # sketch_tgt_im_fn = "/home/kan/Desktop/close_contours/input/hor01_018_021_k_A.A0005.png"
-    # sketch_tgt_im_fn = "/home/kan/Desktop/close_contours/input/hor01_057_R_C.C0002.png"
-    sketch_tgt_im = np.array(Image.open(sketch_tgt_im_fn).convert('L'))
+    from evaluate import *
+    from glob import glob
 
-    pair_points = closing_model.process(sketch_tgt_im)
+    closing_model = ClosingModel()
+    paths = glob('D:/data/geek/close_contours/input/*')
+    ca_path = 'D:/data/geek/close_contours/ca.csv',
+    output = {
+                 'hor01_004_k_A.A0019.png': {},
+                 'hor01_018_021_k_A.A0005.png': {'1356_1862': '1364_1868', '200_10': '10_0'}
+             },
+    report_path = 'report.xlsx'
+    for p in paths:
+        sketch_tgt_im = np.array(Image.open(p).convert('L'))
+        _pair_points = closing_model.process(sketch_tgt_im)
