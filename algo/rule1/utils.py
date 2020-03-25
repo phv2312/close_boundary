@@ -4,6 +4,10 @@ import numpy as np
 from skimage.draw import line
 from skimage.morphology import thin
 
+def imgshow(im):
+    plt.imshow(im)
+    plt.show()
+
 def do_thin(cv_im, do_preprocess=False):
     """
     Thinning the given image to 1-pixel boundary
@@ -103,7 +107,7 @@ def find_direction(img, rows, cols, D):
 
     return result_dct
 
-def get_neighbor_ids(_row, _col, _cv2_im, only_active_pixel=True):
+def get_neighbor_ids(_row, _col, _cv2_im, only_active_pixel=True, max_neighbor=1):
     """
 
     :param _row: ez
@@ -114,11 +118,11 @@ def get_neighbor_ids(_row, _col, _cv2_im, only_active_pixel=True):
     """
     h, w = _cv2_im.shape
 
-    min_row = max(_row - 1, 0)
-    max_row = min(_row + 1 + 1, h)
+    min_row = max(_row - max_neighbor, 0)
+    max_row = min(_row + max_neighbor + 1, h)
 
-    min_col = max(_col - 1, 0)
-    max_col = min(_col + 1 + 1, w)
+    min_col = max(_col - max_neighbor, 0)
+    max_col = min(_col + max_neighbor + 1, w)
 
     coords = []
     for __row in range(min_row, max_row):
@@ -285,11 +289,11 @@ def match_direction(point1, point2, direction_dct, org_shape):
     h, w = org_shape
 
     def set(y,x,h,w,im):
-        if x <= 0: x = 0
-        if y <= 0: y = 0
+        if x <= 0: return
+        if y <= 0: return
 
-        if y >= h: y = h - 1
-        if x >= w: x = w - 1
+        if y >= h: return
+        if x >= w: return
 
         im[y,x] = 255
 
@@ -298,10 +302,20 @@ def match_direction(point1, point2, direction_dct, org_shape):
 
     mat = np.zeros(shape=(h,w),dtype=np.uint8)
 
-    iter = 100
+    iter = 150
+    nb_iter = 1
     for _iter in range(iter):
         set(p1_r + _iter * d1[0], p1_c + _iter * d1[1], h, w, mat)
         set(p2_r + _iter * d2[0], p2_c + _iter * d2[1], h, w, mat)
+
+        p1_nbs = get_neighbor_ids(p1_r, p1_c, mat, only_active_pixel=False, max_neighbor=nb_iter)
+        p2_nbs = get_neighbor_ids(p2_r, p2_c, mat, only_active_pixel=False, max_neighbor=nb_iter)
+
+        for r, c in p1_nbs:
+            set(r + _iter * d1[0], c + _iter * d1[1], h, w, mat)
+
+        for r, c in p2_nbs:
+            set(r + _iter * d2[0], c + _iter * d2[1], h, w, mat)
 
     connect_1 = do_exist_path_btw_points(point1, point2, mat, padding=iter)
     connect_2 = do_exist_path_btw_points(point2, point1, mat, padding=iter)
