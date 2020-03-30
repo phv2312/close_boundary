@@ -326,7 +326,14 @@ def match_direction(point1, point2, direction_dct, org_shape):
 
     return False
 
-def convert_output_format(pair_points):
+
+def rescale_coordinates(point, up_bound):
+    row, col = point
+    row += up_bound
+    return row, col
+
+
+def convert_output_format(pair_points, up_bound=0):
     """Converts the format output pairs to that of evaluation.
 
     :param pair_points:
@@ -335,6 +342,9 @@ def convert_output_format(pair_points):
     result = dict()
     for pair in pair_points:
         start, end = pair
+        start = rescale_coordinates(start, up_bound)
+        end = rescale_coordinates(end, up_bound)
+
         key = '%d_%d' % (start[0], start[1])
         value = '%d_%d' % (end[0], end[1])
         result[key] = value
