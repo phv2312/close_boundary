@@ -1,4 +1,5 @@
 import csv
+from algo.rule1.cat_utils import *
 
 
 def evaluate(ca_path, output, report_path=None, **kwargs):
@@ -16,23 +17,7 @@ def evaluate(ca_path, output, report_path=None, **kwargs):
 
     """
     # Read from CA.
-    with open(ca_path) as csv_file:
-        ca = list(csv.reader(csv_file, delimiter=','))
-    csv_file.close()
-
-    # Turn CA list into a dict for easier processing.
-    ca_dict = {}
-    for i, row in enumerate(ca[1:]):
-        img_name, _, _, _, n_contours, row1, col1, row2, col2 = row
-        # Turn points to strings to make a dict.
-        coor1 = '%s_%s' % (row1, col1)
-        coor2 = '%s_%s' % (row2, col2)
-        row_index = i + 1
-        if img_name in ca_dict:
-            ca_dict[img_name]['coor_info'].append((coor1, coor2, row_index))
-        else:
-            ca_dict[img_name] = {'n_contours': int(n_contours), 'coor_info': [(coor1, coor2, row_index)]}
-
+    ca_dict = process_CA_for_evaluation(ca_path)
     img_report = {}
     row_report = {}
     total_img = len(output)
@@ -70,14 +55,15 @@ def evaluate(ca_path, output, report_path=None, **kwargs):
             row_report[row_index] = result
 
         # Only calculate P and R if n_contours is not 0.
-        if ca_dict[img_name]['n_contours'] != 0:
+        if ca_dict[img_name]['n_contours'] != 0 and (tp + fp) != 0:
             precision = tp * 1.0 / (tp + fp)
+        if ca_dict[img_name]['n_contours'] != 0 and (tp + fn) != 0:
             recall = tp * 1.0 / (tp + fn)
             img_report[img_name]['precision'] = '%.2f' % precision
             img_report[img_name]['recall'] = '%.2f' % recall
 
         img_report[img_name]['correct'] = tp
-        if img_report[img_name]['correct'] == img_report[img_name]['n_output']:
+        if img_report[img_name]['correct'] == img_report[img_name]['n_output'] == img_report[img_name]['n_contours']:
             img_report[img_name]['overall'] = 1
             total_correct_img += 1
 
@@ -149,24 +135,56 @@ if __name__ == '__main__':
     from algo.rule1.closing import ClosingModel
     from algo.rule1.utils import convert_output_format
 
-    closing_model = ClosingModel()
-    # TODO
-    paths = glob('D:/data/geek/close_contours/input/*')
-    # TODO
-    ca_path = 'D:/data/geek/close_contours/ca.csv'
+    # TODO:
+    dev_mode = True  # whether we're processing actual clients' sketches
+    visualize_mode = True  # whether we wanna visualize debug images
 
+    closing_model = ClosingModel(max_pair_distance=10, max_traveled_pixel=10, keypoint_to_boundary_distance=7)
     now = datetime.now()
     dt_string = now.strftime("%d-%m-%Y_%H-%M-%S")
-    # TODO
-    report_path = 'D:/output/geek/close_contours/report_%s.xlsx' % dt_string
+
+    # TODO:
+    paths = glob('D:/data/geek/close_contours/input/*')
+    ca_path = 'D:/data/geek/close_contours/ca.csv'
+    ref_colored_img_dir = 'D:/data/geek/HOR01_deta_all'
+    debug_img_dir = 'D:/data/geek/close_contours/debug'
+
+    # TODO:
+    output_dir = 'D:/output/geek/close_contours/%s' % dt_string
+    os.makedirs(output_dir, exist_ok=True)
+    report_path = '%s/report_%s.xlsx' % (output_dir, dt_string)
+
     result = {}
-    for i, p in enumerate(paths[29:]):
+    preprocess_ca_dict = process_CA_for_preprocessing(ca_path)
+    for i, p in enumerate(paths):
         print(i, p)
+        # Load the image as a gray image.
         sketch_tgt_im = np.array(Image.open(p).convert('L'))
+
+        if dev_mode:
+            # Preprocess.
+            sketch_fn = os.path.basename(p)
+            ref_colored_img_fn = preprocess_ca_dict[sketch_fn]
+            ref_colored_img_path = '%s/%s' % (ref_colored_img_dir, ref_colored_img_fn)
+            ref_colored_img = np.asarray(Image.open(ref_colored_img_path))
+            sketch, interval = preprocess_imgs(sketch_tgt_im, ref_colored_img)
+            sketch = sketch[0]
+            up_bound, _ = interval
+        else:
+            sketch = sketch_tgt_im
+            up_bound = 0
+
+        # Close.
         pair_points, max_traveled_pixels, max_pair_distance, keypoint_to_boundary_distance = \
-            closing_model.process(sketch_tgt_im)
-        name = os.path.basename(p)
-        result[name] = convert_output_format(pair_points)
+            closing_model.process(sketch)
+        result[sketch_fn] = convert_output_format(pair_points, up_bound)
+
+        # Visualize the debug image.
+        if visualize_mode:
+            debug_img_path = '%s/%s' % (debug_img_dir, sketch_fn)
+            visualize_debug_img(debug_img_path, result[sketch_fn], mode='evaluation', output_dir=output_dir)
+
+    # Export report.xlsx.
     kwargs = {
         'max_traveled_pixels': max_traveled_pixels,
         'max_pair_distance': max_pair_distance,
@@ -174,12 +192,3 @@ if __name__ == '__main__':
         '-': '-'
     }
     evaluate(ca_path, result, report_path, **kwargs)
-
-
-    # ca_path = 'D:/data/geek/close_contours/ca.csv',
-    # output = {
-    #  'hor01_004_k_A.A0019.png': {},
-    #  'hor01_018_021_k_A.A0005.png': {'1356_1862': '1364_1868', '200_10': '10_0'}
-    # },
-    # report_path = 'report.xlsx'
-
