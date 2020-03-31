@@ -71,8 +71,8 @@ def evaluate(ca_path, output, report_path=None, **kwargs):
 
         # Only calculate P and R if n_contours is not 0.
         if ca_dict[img_name]['n_contours'] != 0:
-            precision = tp * 1.0 / (tp + fp)
-            recall = tp * 1.0 / (tp + fn)
+            precision = tp * 1.0 / (tp + fp + 1e-6)
+            recall = tp * 1.0 / (tp + fn + 1e-6)
             img_report[img_name]['precision'] = '%.2f' % precision
             img_report[img_name]['recall'] = '%.2f' % recall
 
@@ -151,14 +151,14 @@ if __name__ == '__main__':
 
     closing_model = ClosingModel()
     # TODO
-    paths = glob('D:/data/geek/close_contours/input/*')
+    paths = glob('/home/kan/Desktop/close_contours/input/*')
     # TODO
-    ca_path = 'D:/data/geek/close_contours/ca.csv'
+    ca_path = '/home/kan/Desktop/close_contours/ca.csv'
 
     now = datetime.now()
     dt_string = now.strftime("%d-%m-%Y_%H-%M-%S")
     # TODO
-    report_path = 'D:/output/geek/close_contours/report_%s.xlsx' % dt_string
+    report_path = '/home/kan/Desktop/close_contours/report_%s.xlsx' % dt_string
     result = {}
     for i, p in enumerate(paths[29:]):
         print(i, p)
