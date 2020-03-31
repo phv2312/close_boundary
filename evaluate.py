@@ -55,10 +55,11 @@ def evaluate(ca_path, output, report_path=None, **kwargs):
             row_report[row_index] = result
 
         # Only calculate P and R if n_contours is not 0.
-        if ca_dict[img_name]['n_contours'] != 0 and (tp + fp) != 0:
-            precision = tp * 1.0 / (tp + fp)
-        if ca_dict[img_name]['n_contours'] != 0 and (tp + fn) != 0:
-            recall = tp * 1.0 / (tp + fn)
+
+        if ca_dict[img_name]['n_contours'] != 0:
+            precision = tp * 1.0 / (tp + fp + 1e-6)
+            recall = tp * 1.0 / (tp + fn + 1e-6)
+
             img_report[img_name]['precision'] = '%.2f' % precision
             img_report[img_name]['recall'] = '%.2f' % recall
 
@@ -138,7 +139,6 @@ if __name__ == '__main__':
     # TODO:
     dev_mode = True  # whether we're processing actual clients' sketches
     visualize_mode = True  # whether we wanna visualize debug images
-
     closing_model = ClosingModel(max_pair_distance=10, max_traveled_pixel=10, keypoint_to_boundary_distance=7)
     now = datetime.now()
     dt_string = now.strftime("%d-%m-%Y_%H-%M-%S")

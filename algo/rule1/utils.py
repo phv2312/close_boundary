@@ -3,10 +3,62 @@ import matplotlib.pyplot as plt
 import numpy as np
 from skimage.draw import line
 from skimage.morphology import thin
+from skimage import measure as measure
+
 
 def imgshow(im):
     plt.imshow(im)
     plt.show()
+
+def get_confidence_score(point2component, pair_points, regions):
+    dct = {}
+
+    for p1, p2 in pair_points: # (r,c)
+        comp_ids_1 = point2component[p1]
+        comp_ids_2 = point2component[p2]
+
+        common_ids = set(map(int, comp_ids_1)).intersection(set(map(int, comp_ids_2)))
+        common_ids = list(common_ids)
+        if common_ids:
+            for common_id in common_ids:
+                common_id = common_id - 1
+
+                if p1 in [(1176, 1014)]:
+                    print('found')
+
+                region = regions[common_id]['image'].astype(np.uint8) * 255
+                _y1, _x1, _, _ = regions[common_id]['bbox']
+                cv2.line(region, (p1[1] - _x1, p1[0] - _y1), (p2[1] - _x1, p2[0] - _y1), color=0, thickness=1)
+
+                max_v = np.max(measure.label(region, neighbors=4, background=0))
+                if max_v > 1:
+                    dct[(p1, p2)] = 1
+                else:
+                    dct[(p1, p2)] = 0 if (p1, p2) not in dct else dct[(p1, p2)]
+
+    return dct
+
+def filter_by_components(pair_points, thinned_image):
+    results = []
+
+    # for original image
+    _labels  = measure.label(thinned_image, neighbors=4, background=0)
+    _regions = measure.regionprops(_labels)
+
+    #
+    for (s_r, s_c), (t_r, t_c) in pair_points:
+
+        if (s_r, s_c) in [(992, 1293)]:
+            print('found')
+
+        _tmp = thinned_image.copy()
+        cv2.line(_tmp, (s_c, s_r), (t_c, t_r), color=0, thickness=1)
+
+        _tmp_regions = measure.regionprops(measure.label(_tmp, neighbors=4, background=0))
+        if len(_tmp_regions) > len(_regions):
+            results += [((s_r, s_c), (t_r, t_c))]
+
+    return results
 
 def do_thin(cv_im, do_preprocess=False):
     """
@@ -67,45 +119,148 @@ def to_neighbor_matrix(cv2_im):
 
     return result
 
+def calc_gradient_2(M):
+    kernel_size = 5
+
+    #x
+    kernel_x = np.array([
+        [-1] * kernel_size + [0] + [1] * kernel_size,
+    ] * (2 * kernel_size + 1))
+    kernel_x[kernel_size] *= 2
+
+    #y
+    kernel_y = kernel_x.T
+
+    direct_x = cv2.filter2D(M, -1, kernel_x)
+    direct_y = cv2.filter2D(M, -1, kernel_y)
+
+    theta = np.arctan2(direct_y, direct_x)
+    return theta
+
 def calc_gradient(M):
+    #return calc_gradient_2(M)
     """
     Calculating the angle of point ...
     :param M:
     :return:
     """
-    sobel_x = cv2.Sobel(M, cv2.CV_64F, 1, 0, ksize=3)
-    sobel_y = cv2.Sobel(M, cv2.CV_64F, 0, 1, ksize=3)
+    sobel_x = cv2.Sobel(M, cv2.CV_64F, 1, 0, ksize=11)
+    sobel_y = cv2.Sobel(M, cv2.CV_64F, 0, 1, ksize=11)
 
     theta = np.arctan2(sobel_y, sobel_x)
     return theta
 
-def find_direction(img, rows, cols, D):
+
+def find_direction_v2(img, rows, cols, D, max_traveled_pixel=5):
+    def _find(row, col, img, max_traveled_pixel):
+        stack = [(row, col)]
+        traveled, directions = [], []
+        tmp_max_traveled_pixel = max_traveled_pixel
+        while (len(stack) > 0 and tmp_max_traveled_pixel > 0):
+            cur_row, cur_col = stack.pop(0)
+            traveled += [(cur_row, cur_col)]
+
+            if (cur_row, cur_col) in [(784, 1127)]:
+                print('found')
+
+            neighbor_coords = get_neighbor_ids(cur_row, cur_col, img)
+            neighbor_coords = [coord for coord in neighbor_coords if coord not in traveled + stack]
+
+            n_neighbor = len(neighbor_coords)
+            if n_neighbor == 1:
+                stack += neighbor_coords
+                tmp_max_traveled_pixel -= 1
+
+                _direction = (cur_col - neighbor_coords[0][1], cur_row - neighbor_coords[0][0])
+                if np.abs(_direction[0]) == 1 and np.abs(_direction[1]) == 1:
+                    directions += [_direction] * 2
+                else:
+                    directions += [_direction]
+
+        _vs, _fs = np.unique(directions, return_counts=True, axis=0)
+        _max_f_id = np.argmax(_fs)
+
+        if _fs[_max_f_id] == 1:
+            return directions[0]
+        else:
+            return _vs[_max_f_id]
+
+    result_dct = {}
+    for i, j in zip(rows, cols):
+        _next = _find(i, j, img, max_traveled_pixel)
+        result_dct[(i, j)] = _next
+
+    return result_dct
+
+def find_direction(img, rows, cols, D, n_neighbor = 5):
     """
     Mapping angle to the next neighbor points ...
     """
+    h, w = img.shape[:2]
+
+    def angle2direction(a):
+        #
+        directions = [(1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0)]
+        angles = np.array([0, 45, 90, 135, 180, 225, 270, 315, 360])
+
+        #
+        _tmp = np.abs(angles - a)
+        _min_id = np.argmin(_tmp)
+
+        #
+        if _min_id == len(angles) - 1: _min_id = 2
+
+        _next = directions[_min_id]
+
+        return _next
+
     angle = D * 180. / np.pi
     angle[angle < 0] += 360
 
     #
-    directions = [(1,0), (1,1), (0,1), (-1,1),(-1,0),(-1,-1),(0,-1),(1,-1),(1,0)]
-    angles = np.array([0,45,90,135,180,225,270,315,360])
-
-    #
     result_dct = {}
     for i, j in zip(rows, cols):
-        _d = angle[i, j]
+        if (i,j) in [(101,570)]:
+            print ('found')
 
-        _tmp = np.abs(angles - _d)
-        _min_id = np.argmin(_tmp)
+        nb_cords = get_neighbor_ids(i, j, img, only_active_pixel=True, max_neighbor=n_neighbor)
 
-        if _min_id == len(angles) - 1: _min_id = 2
+        _nexts = [angle2direction(angle[_i,_j]) for _i,_j in nb_cords if 0 <= _i < h and 0 <= _j < w ]
+        _vs, _fs = np.unique(_nexts, return_counts=True, axis=0)
+        _max_f = 1 #np.argmax(_fs)
 
-        _next = directions[_min_id]
-        #img[i + _next[1], j + _next[0]] = 127
-
-        result_dct[(i,j)] = _next
+        _next = angle2direction(angle[i,j]) if _max_f == 1 else _vs[np.argmax(_fs)]
+        result_dct[(i,j)] = tuple(_next)
 
     return result_dct
+
+def points_to_components(points, thinned_image):
+    def _point_to_component(point, tgt_label, org_shape,window_size = 5):
+        h, w = org_shape
+        _row, _col = point
+
+        min_y = max(_row - window_size, 0)
+        max_y = min(_row + window_size, h)
+
+        min_x = max(_col - window_size, 0)
+        max_x = min(_col + window_size, w)
+
+        _sub_im = tgt_label[min_y: max_y, min_x: max_x]
+        _values, _counts = np.unique(_sub_im, return_counts=True)
+
+        _most_vals = list(_values[np.argsort(_counts)][::-1])
+
+        if 0 in _most_vals: _most_vals.remove(0)
+
+        return _most_vals
+
+    labels = measure.label(thinned_image, neighbors=4, background=0)
+    point2comp = {}
+    for point in points:
+        comp_ids = _point_to_component(point, labels, thinned_image.shape[:2], window_size=5)
+        point2comp[point] = list(map(str,comp_ids))
+
+    return point2comp, measure.regionprops(labels)
 
 def get_neighbor_ids(_row, _col, _cv2_im, only_active_pixel=True, max_neighbor=1):
     """
@@ -189,13 +344,24 @@ def choose_pair_by_distance(rows, cols, max_distance, return_matrix = False):
     distance[np.arange(len(rows)), np.arange(len(rows))] = np.inf
 
     # get the min distance
-    min_ids = np.argmin(distance, axis=-1) # n_samples,
+    min_ids = np.argsort(distance, axis=-1)# np.argmin(distance, axis=-1) # n_samples,
 
-    pair = {k:v for k,v in enumerate(min_ids) if distance[k,v] <= max_distance}
-    if return_matrix == False:
-        return pair
-    else:
-        return pair, distance
+    # build pair
+    pair = []
+    topk = 2
+    for k, vs in enumerate(min_ids):
+        _tmp = [(k,v) for v in vs[:topk] if distance[k,v] <= max_distance]
+
+        pair += _tmp
+
+    return pair
+
+    #
+    # pair = {k:v for k,v in enumerate(min_ids) if distance[k,v] <= max_distance}
+    # if return_matrix == False:
+    #     return pair
+    # else:
+    #     return pair, distance
 
 def normalize_sub_im(point1, point2, cv2_im, padding, org_shape):
     h, w = org_shape
@@ -251,6 +417,10 @@ def connect_keypoint_to_boundary(point1, cv2_im, max_distance=6, direction_dct =
 
     n_iter = max_distance
     r, c = point1
+
+    if (r,c) in [(901, 1413)]:
+        print('found')
+
     direction = direction_dct[(r,c)][::-1]
 
     next_rs, next_cs = [r + _ * direction[0] for _ in range(1, n_iter + 1)], [c + _ * direction[1] for _ in range(1, n_iter + 1)]
@@ -283,46 +453,74 @@ def can_connect_two_points(point1, point2, cv2_im):
 
     return True
 
+import time
+from .intersect import doIntersect, Point
+def match_direction_v2(point1, point2, direction_dct, org_shape):
+    p1_r, p1_c = point1
+    p2_r, p2_c = point2
+    h, w = org_shape
+
+    d1 = direction_dct[(p1_r, p1_c)][::-1]  # (y,x)
+    d2 = direction_dct[(p2_r, p2_c)][::-1]  # (y,x)
+
+    iter = 100
+    e_p1_r = min(h - 1, p1_r + iter * d1[0])
+    e_p1_c = min(w - 1, p1_c + iter * d1[1])
+
+    e_p2_r = min(h - 1, p2_r + iter * d2[0])
+    e_p2_c = min(w - 1, p2_c + iter * d2[1])
+
+    n_max_neighbor = 5
+    ofs_x = [(0, _x) for _x in range(-n_max_neighbor, n_max_neighbor + 1)]
+    ofs_y = [(_y, 0) for _y in range(-n_max_neighbor, n_max_neighbor + 1)]
+    ofs = ofs_x + ofs_y
+
+    for ofs_r_1, ofs_c_1 in ofs:
+        for ofs_r_2, ofs_c_2 in ofs:
+            _p1_c = np.clip(p1_c + ofs_c_1, 0, w - 1)
+            _p1_r = np.clip(p1_r + ofs_r_1, 0, h - 1)
+            _e_p1_c = np.clip(e_p1_c + ofs_c_1, 0, w - 1)
+            _e_p1_r = np.clip(e_p1_r + ofs_r_1, 0, h - 1)
+
+            _p2_c = np.clip(p2_c + ofs_c_2, 0, w - 1)
+            _p2_r = np.clip(p2_r + ofs_r_2, 0, h - 1)
+            _e_p2_c = np.clip(e_p2_c + ofs_c_2, 0, w - 1)
+            _e_p2_r = np.clip(e_p2_r + ofs_r_2, 0, h - 1)
+
+            is_intersect = doIntersect(Point(_p1_c, _p1_r), Point(_e_p1_c, _e_p1_r),
+                                       Point(_p2_c, _p2_r), Point(_e_p2_c, _e_p2_r))
+            if is_intersect == True:
+                return True
+
+    return False
+
+
 def match_direction(point1, point2, direction_dct, org_shape):
     p1_r, p1_c = point1
     p2_r, p2_c = point2
     h, w = org_shape
 
-    def set(y,x,h,w,im):
-        if x <= 0: return
-        if y <= 0: return
+    d1 = direction_dct[(p1_r, p1_c)][::-1]  # (y,x)
+    d2 = direction_dct[(p2_r, p2_c)][::-1]  # (y,x)
 
-        if y >= h: return
-        if x >= w: return
+    iter = 100
+    e_p1_r = min(h - 1, p1_r + iter * d1[0])
+    e_p1_c = min(w - 1, p1_c + iter * d1[1])
 
-        im[y,x] = 255
+    e_p2_r = min(h - 1, p2_r + iter * d2[0])
+    e_p2_c = min(w - 1, p2_c + iter * d2[1])
 
-    d1 = direction_dct[(p1_r, p1_c)][::-1] # (y,x)
-    d2 = direction_dct[(p2_r, p2_c)][::-1] # (y,x)
+    n_max_neighbor = 5
+    ofs_x = [(0, _x) for _x in range(-n_max_neighbor, n_max_neighbor + 2)]
+    ofs_y = [(_y, 0) for _y in range(-n_max_neighbor, n_max_neighbor + 2)]
+    ofs = ofs_x + ofs_y
 
-    mat = np.zeros(shape=(h,w),dtype=np.uint8)
-
-    iter = 150
-    nb_iter = 1
-    for _iter in range(iter):
-        set(p1_r + _iter * d1[0], p1_c + _iter * d1[1], h, w, mat)
-        set(p2_r + _iter * d2[0], p2_c + _iter * d2[1], h, w, mat)
-
-        p1_nbs = get_neighbor_ids(p1_r, p1_c, mat, only_active_pixel=False, max_neighbor=nb_iter)
-        p2_nbs = get_neighbor_ids(p2_r, p2_c, mat, only_active_pixel=False, max_neighbor=nb_iter)
-
-        for r, c in p1_nbs:
-            set(r + _iter * d1[0], c + _iter * d1[1], h, w, mat)
-
-        for r, c in p2_nbs:
-            set(r + _iter * d2[0], c + _iter * d2[1], h, w, mat)
-
-    connect_1 = do_exist_path_btw_points(point1, point2, mat, padding=iter)
-    connect_2 = do_exist_path_btw_points(point2, point1, mat, padding=iter)
-
-    is_connect = connect_1 and connect_2
-    if is_connect:
-        return True
+    for ofs_r_1, ofs_c_1 in ofs:
+        for ofs_r_2, ofs_c_2 in ofs:
+            is_intersect = doIntersect(Point(p1_c + ofs_c_1, p1_r + ofs_r_1), Point(e_p1_c + ofs_c_1, e_p1_r + ofs_r_1),
+                                       Point(p2_c + ofs_c_2, p2_r + ofs_r_2), Point(e_p2_c + ofs_c_2, e_p2_r + ofs_r_2))
+            if is_intersect == True:
+                return True
 
     return False
 
